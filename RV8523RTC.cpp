@@ -1,6 +1,6 @@
 /*
  * DS1307RTC.h - library for DS1307 RTC
-  
+
   Copyright (c) Michael Margolis 2009
   This library is intended to be uses with Arduino Time library functions
 
@@ -17,7 +17,7 @@
   You should have received a copy of the GNU Lesser General Public
   License along with this library; if not, write to the Free Software
   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
-  
+
   30 Dec 2009 - Initial release
   5 Sep 2011 updated for Arduino 1.0
  */
@@ -29,40 +29,65 @@
 #else
 #include <Wire.h>
 #endif
-#include "DS1307RTC.h"
+#include "RV8523RTC.h"
 
-#define DS1307_CTRL_ID 0x68 
 
-DS1307RTC::DS1307RTC()
+#define RV8523_I2C_ADDR (0xD0>>1)
+
+// Registers
+#define RV8523_CTRL_0 0x00
+#define RV8523_CTRL_1 0x01
+#define RV8523_CTRL_2 0x02
+#define RV8523_SEC    0x03
+#define RV8523_MIN    0x04
+#define RV8523_HOURS  0x05
+#define RV8523_DAYS   0x06
+#define RV8523_WDAYS  0x07
+#define RV8523_MONTHS 0x08
+#define RV8523_YEARS  0x09
+#define RV8523_AL_MIN 0x0A
+#define RV8523_AL_HOU 0x0B
+#define RV8523_AL_DAY 0x0C
+#define RV8523_AL_WDA 0x0D
+#define RV8523_OFFSET 0x0E
+#define RV8523_CLKOUT 0x0F
+#define RV8523_A_CLK  0x10
+#define RV8523_A_     0x11
+#define RV8523_B_CLK  0x12
+#define RV8523_C      0x13
+
+
+
+RV8523RTC::RV8523RTC()
 {
   Wire.begin();
 }
-  
+
 // PUBLIC FUNCTIONS
-time_t DS1307RTC::get()   // Aquire data from buffer and convert to time_t
+time_t RV8523RTC::get()   // Aquire data from buffer and convert to time_t
 {
   tmElements_t tm;
   if (read(tm) == false) return 0;
   return(makeTime(tm));
 }
 
-bool DS1307RTC::set(time_t t)
+bool RV8523RTC::set(time_t t)
 {
   tmElements_t tm;
   breakTime(t, tm);
-  return write(tm); 
+  return write(tm);
 }
 
 // Aquire data from the RTC chip in BCD format
-bool DS1307RTC::read(tmElements_t &tm)
+bool RV8523RTC::read(tmElements_t &tm)
 {
   uint8_t sec;
-  Wire.beginTransmission(DS1307_CTRL_ID);
-#if ARDUINO >= 100  
-  Wire.write((uint8_t)0x00); 
+  Wire.beginTransmission(RV8523_I2C_ADDR);
+#if ARDUINO >= 100
+  Wire.write((uint8_t)0x00);
 #else
   Wire.send(0x00);
-#endif  
+#endif
   if (Wire.endTransmission() != 0) {
     exists = false;
     return false;
@@ -74,7 +99,7 @@ bool DS1307RTC::read(tmElements_t &tm)
   if (Wire.available() < tmNbrFields) return false;
 #if ARDUINO >= 100
   sec = Wire.read();
-  tm.Second = bcd2dec(sec & 0x7f);   
+  tm.Second = bcd2dec(sec & 0x7f);
   tm.Minute = bcd2dec(Wire.read() );
   tm.Hour =   bcd2dec(Wire.read() & 0x3f);  // mask assumes 24hr clock
   tm.Wday = bcd2dec(Wire.read() );
@@ -83,7 +108,7 @@ bool DS1307RTC::read(tmElements_t &tm)
   tm.Year = y2kYearToTm((bcd2dec(Wire.read())));
 #else
   sec = Wire.receive();
-  tm.Second = bcd2dec(sec & 0x7f);   
+  tm.Second = bcd2dec(sec & 0x7f);
   tm.Minute = bcd2dec(Wire.receive() );
   tm.Hour =   bcd2dec(Wire.receive() & 0x3f);  // mask assumes 24hr clock
   tm.Wday = bcd2dec(Wire.receive() );
@@ -95,30 +120,30 @@ bool DS1307RTC::read(tmElements_t &tm)
   return true;
 }
 
-bool DS1307RTC::write(tmElements_t &tm)
+bool RV8523RTC::write(tmElements_t &tm)
 {
   // To eliminate any potential race conditions,
   // stop the clock before writing the values,
   // then restart it after.
   Wire.beginTransmission(DS1307_CTRL_ID);
-#if ARDUINO >= 100  
-  Wire.write((uint8_t)0x00); // reset register pointer  
+#if ARDUINO >= 100
+  Wire.write((uint8_t)0x00); // reset register pointer
   Wire.write((uint8_t)0x80); // Stop the clock. The seconds will be written last
   Wire.write(dec2bcd(tm.Minute));
   Wire.write(dec2bcd(tm.Hour));      // sets 24 hour format
-  Wire.write(dec2bcd(tm.Wday));   
+  Wire.write(dec2bcd(tm.Wday));
   Wire.write(dec2bcd(tm.Day));
   Wire.write(dec2bcd(tm.Month));
-  Wire.write(dec2bcd(tmYearToY2k(tm.Year))); 
-#else  
-  Wire.send(0x00); // reset register pointer  
+  Wire.write(dec2bcd(tmYearToY2k(tm.Year)));
+#else
+  Wire.send(0x00); // reset register pointer
   Wire.send(0x80); // Stop the clock. The seconds will be written last
   Wire.send(dec2bcd(tm.Minute));
   Wire.send(dec2bcd(tm.Hour));      // sets 24 hour format
-  Wire.send(dec2bcd(tm.Wday));   
+  Wire.send(dec2bcd(tm.Wday));
   Wire.send(dec2bcd(tm.Day));
   Wire.send(dec2bcd(tm.Month));
-  Wire.send(dec2bcd(tmYearToY2k(tm.Year)));   
+  Wire.send(dec2bcd(tmYearToY2k(tm.Year)));
 #endif
   if (Wire.endTransmission() != 0) {
     exists = false;
@@ -128,11 +153,11 @@ bool DS1307RTC::write(tmElements_t &tm)
 
   // Now go back and set the seconds, starting the clock back up as a side effect
   Wire.beginTransmission(DS1307_CTRL_ID);
-#if ARDUINO >= 100  
-  Wire.write((uint8_t)0x00); // reset register pointer  
+#if ARDUINO >= 100
+  Wire.write((uint8_t)0x00); // reset register pointer
   Wire.write(dec2bcd(tm.Second)); // write the seconds, with the stop bit clear to restart
-#else  
-  Wire.send(0x00); // reset register pointer  
+#else
+  Wire.send(0x00); // reset register pointer
   Wire.send(dec2bcd(tm.Second)); // write the seconds, with the stop bit clear to restart
 #endif
   if (Wire.endTransmission() != 0) {
@@ -143,14 +168,14 @@ bool DS1307RTC::write(tmElements_t &tm)
   return true;
 }
 
-unsigned char DS1307RTC::isRunning()
+unsigned char RV8523RTC::isRunning()
 {
   Wire.beginTransmission(DS1307_CTRL_ID);
-#if ARDUINO >= 100  
-  Wire.write((uint8_t)0x00); 
+#if ARDUINO >= 100
+  Wire.write((uint8_t)0x00);
 #else
   Wire.send(0x00);
-#endif  
+#endif
   Wire.endTransmission();
 
   // Just fetch the seconds register and check the top bit
@@ -159,32 +184,32 @@ unsigned char DS1307RTC::isRunning()
   return !(Wire.read() & 0x80);
 #else
   return !(Wire.receive() & 0x80);
-#endif  
+#endif
 }
 
-void DS1307RTC::setCalibration(char calValue)
+void RV8523RTC::setCalibration(char calValue)
 {
   unsigned char calReg = abs(calValue) & 0x1f;
   if (calValue >= 0) calReg |= 0x20; // S bit is positive to speed up the clock
   Wire.beginTransmission(DS1307_CTRL_ID);
-#if ARDUINO >= 100  
+#if ARDUINO >= 100
   Wire.write((uint8_t)0x07); // Point to calibration register
   Wire.write(calReg);
-#else  
+#else
   Wire.send(0x07); // Point to calibration register
   Wire.send(calReg);
 #endif
-  Wire.endTransmission();  
+  Wire.endTransmission();
 }
 
-char DS1307RTC::getCalibration()
+char RV8523RTC::getCalibration()
 {
   Wire.beginTransmission(DS1307_CTRL_ID);
-#if ARDUINO >= 100  
-  Wire.write((uint8_t)0x07); 
+#if ARDUINO >= 100
+  Wire.write((uint8_t)0x07);
 #else
   Wire.send(0x07);
-#endif  
+#endif
   Wire.endTransmission();
 
   Wire.requestFrom(DS1307_CTRL_ID, 1);
@@ -201,18 +226,17 @@ char DS1307RTC::getCalibration()
 // PRIVATE FUNCTIONS
 
 // Convert Decimal to Binary Coded Decimal (BCD)
-uint8_t DS1307RTC::dec2bcd(uint8_t num)
+uint8_t RV8523RTC::dec2bcd(uint8_t num)
 {
   return ((num/10 * 16) + (num % 10));
 }
 
 // Convert Binary Coded Decimal (BCD) to Decimal
-uint8_t DS1307RTC::bcd2dec(uint8_t num)
+uint8_t RV8523RTC::bcd2dec(uint8_t num)
 {
   return ((num/16 * 10) + (num % 16));
 }
 
-bool DS1307RTC::exists = false;
+bool RV8523RTC::exists = false;
 
-DS1307RTC RTC = DS1307RTC(); // create an instance for the user
-
+RV8523RTC RTC = RV8523RTC(); // create an instance for the user

@@ -1,7 +1,2 @@
-Readme file for DS1307RTC Library
-
-The DS1307RTC library is provided to demonstrate the Arduino Time library.
-
-See the TimeRTC example sketches privided with the Time library download for usage
-
-
+This is a Port of the DS1307 Library to the RV8523 chip. So the RV8523 can be
+used with the time-library

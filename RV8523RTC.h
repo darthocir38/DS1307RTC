@@ -3,17 +3,17 @@
  * This library is intended to be uses with Arduino Time library functions
  */
 
-#ifndef DS1307RTC_h
-#define DS1307RTC_h
+#ifndef RV8523RTC_h
+#define RV8523RTC_h
 
 #include <TimeLib.h>
 
 // library interface description
-class DS1307RTC
+class RV8523RTC
 {
   // user-accessible "public" interface
   public:
-    DS1307RTC();
+    RV8523RTC();
     static time_t get();
     static bool set(time_t t);
     static bool read(tmElements_t &tm);
@@ -33,8 +33,6 @@ class DS1307RTC
 #undef RTC // workaround for Arduino Due, which defines "RTC"...
 #endif
 
-extern DS1307RTC RTC;
+extern RV8523RTC RTC;
 
 #endif
- 
-
