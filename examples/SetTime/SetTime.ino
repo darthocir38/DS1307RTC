@@ -1,6 +1,6 @@
 #include <Wire.h>
 #include <TimeLib.h>
-#include <DS1307RTC.h>
+#include <RV8523RTC.h>
 
 const char *monthName[12] = {
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -26,12 +26,12 @@ void setup() {
   while (!Serial) ; // wait for Arduino Serial Monitor
   delay(200);
   if (parse && config) {
-    Serial.print("DS1307 configured Time=");
+    Serial.print("RV8523 configured Time=");
     Serial.print(__TIME__);
     Serial.print(", Date=");
     Serial.println(__DATE__);
   } else if (parse) {
-    Serial.println("DS1307 Communication Error :-{");
+    Serial.println("RV8523 Communication Error :-{");
     Serial.println("Please check your circuitry");
   } else {
     Serial.print("Could not parse info from the compiler, Time=\"");
@@ -72,4 +72,3 @@ bool getDate(const char *str)
   tm.Year = CalendarYrToTm(Year);
   return true;
 }
-

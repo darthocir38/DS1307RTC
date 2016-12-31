@@ -31,30 +31,46 @@
 #endif
 #include "RV8523RTC.h"
 
+#define BIT(n)                  ( 1<<(n) )
+#define BIT_SET(y, mask)        ( y |=  (mask) )
+#define BIT_CLEAR(y, mask)      ( y &= ~(mask) )
+#define BIT_FLIP(y, mask)       ( y ^=  (mask) )
 
 #define RV8523_I2C_ADDR (0xD0>>1)
 
 // Registers
-#define RV8523_CTRL_0 0x00
-#define RV8523_CTRL_1 0x01
-#define RV8523_CTRL_2 0x02
-#define RV8523_SEC    0x03
-#define RV8523_MIN    0x04
-#define RV8523_HOURS  0x05
-#define RV8523_DAYS   0x06
-#define RV8523_WDAYS  0x07
-#define RV8523_MONTHS 0x08
-#define RV8523_YEARS  0x09
-#define RV8523_AL_MIN 0x0A
-#define RV8523_AL_HOU 0x0B
-#define RV8523_AL_DAY 0x0C
-#define RV8523_AL_WDA 0x0D
-#define RV8523_OFFSET 0x0E
-#define RV8523_CLKOUT 0x0F
-#define RV8523_A_CLK  0x10
-#define RV8523_A_     0x11
-#define RV8523_B_CLK  0x12
-#define RV8523_C      0x13
+#define RV8523_CTRL_1       0x00
+#define RV8523_CTRL_1_CAP   7     // Must be set to logic 0 for normal operations
+#define RV8523_CTRL_1_STOP  5     // 0 -> RTC time circuits running
+                                  // 1 -> RTC time circuits frozen
+#define RV8523_CTRL_1_SR    4     // 0 -> No SoftwareReset
+                                  // 1 -> Init SoftwareReset
+#define RV8523_CTRL_1_1224  3     // 0 -> 24h
+                                  // 1 -> 12h
+#define RV8523_CTRL_1_SIE   2     // Second interrupt enable/disable
+#define RV8523_CTRL_1_AIE   1     // Alarm interrupt enable/disable
+#define RV8523_CTRL_1_CIE   0     // correction interrupt enable/disable
+#define RV8523_CTRL_2       0x01  // Irq stuff
+#define RV8523_CTRL_3       0x02
+#define RV8523_CTRL_3_BLF   2     // battery status
+
+#define RV8523_SEC          0x03
+#define RV8523_MIN          0x04
+#define RV8523_HOURS        0x05
+#define RV8523_DAYS         0x06
+#define RV8523_WDAYS        0x07
+#define RV8523_MONTHS       0x08
+#define RV8523_YEARS        0x09
+#define RV8523_AL_MIN       0x0A
+#define RV8523_AL_HOU       0x0B
+#define RV8523_AL_DAY       0x0C
+#define RV8523_AL_WDA       0x0D
+#define RV8523_OFFSET       0x0E
+#define RV8523_CLKOUT       0x0F
+#define RV8523_A_CLK        0x10
+#define RV8523_A_           0x11
+#define RV8523_B_CLK        0x12
+#define RV8523_C            0x13
 
 
 
@@ -79,14 +95,31 @@ bool RV8523RTC::set(time_t t)
 }
 
 // Aquire data from the RTC chip in BCD format
+/*
+Recommended method for reading the time:
+1. Send a START condition and the slave address for write (D0h)
+2. Set the address pointer to 3 (Seconds) by sending 03h
+3. Send a RE-START condition (STOP followed by START)
+4. Send the slave address for read (D1h)
+5. Read the seconds
+6. Read the minutes
+7. Read the hours
+8. Read the days
+9. Read the weekdays
+10. Read the months
+11. Read the years
+12. Send a STOP condition
+*/
+
 bool RV8523RTC::read(tmElements_t &tm)
 {
   uint8_t sec;
   Wire.beginTransmission(RV8523_I2C_ADDR);
+  // send addr of secconds register
 #if ARDUINO >= 100
-  Wire.write((uint8_t)0x00);
+  Wire.write((uint8_t)RV8523_SEC);
 #else
-  Wire.send(0x00);
+  Wire.send(RV8523_SEC);
 #endif
   if (Wire.endTransmission() != 0) {
     exists = false;
@@ -94,16 +127,20 @@ bool RV8523RTC::read(tmElements_t &tm)
   }
   exists = true;
 
-  // request the 7 data fields   (secs, min, hr, dow, date, mth, yr)
-  Wire.requestFrom(DS1307_CTRL_ID, tmNbrFields);
-  if (Wire.available() < tmNbrFields) return false;
+  /* request the 7 data fields   (secs, min, hr, dow, date, mth, yr)
+  * RV8523_SEC RV8523_MIN RV8523_HOURS RV8523_DAYS RV8523_WDAYS RV8523_MONTHS RV8523_YEARS
+  */
+  Wire.requestFrom(RV8523_I2C_ADDR, tmNbrFields);
+  if (Wire.available() < tmNbrFields){
+    return false;
+  }
 #if ARDUINO >= 100
   sec = Wire.read();
   tm.Second = bcd2dec(sec & 0x7f);
   tm.Minute = bcd2dec(Wire.read() );
   tm.Hour =   bcd2dec(Wire.read() & 0x3f);  // mask assumes 24hr clock
-  tm.Wday = bcd2dec(Wire.read() );
   tm.Day = bcd2dec(Wire.read() );
+  tm.Wday = bcd2dec(Wire.read() );
   tm.Month = bcd2dec(Wire.read() );
   tm.Year = y2kYearToTm((bcd2dec(Wire.read())));
 #else
@@ -111,12 +148,15 @@ bool RV8523RTC::read(tmElements_t &tm)
   tm.Second = bcd2dec(sec & 0x7f);
   tm.Minute = bcd2dec(Wire.receive() );
   tm.Hour =   bcd2dec(Wire.receive() & 0x3f);  // mask assumes 24hr clock
-  tm.Wday = bcd2dec(Wire.receive() );
   tm.Day = bcd2dec(Wire.receive() );
+  tm.Wday = bcd2dec(Wire.receive() );
   tm.Month = bcd2dec(Wire.receive() );
   tm.Year = y2kYearToTm((bcd2dec(Wire.receive())));
 #endif
-  if (sec & 0x80) return false; // clock is halted
+  if (sec & 0x80)
+  {
+    return false; // Clock integrity is not guaranteed
+  }
   return true;
 }
 
@@ -125,40 +165,25 @@ bool RV8523RTC::write(tmElements_t &tm)
   // To eliminate any potential race conditions,
   // stop the clock before writing the values,
   // then restart it after.
-  Wire.beginTransmission(DS1307_CTRL_ID);
+  Wire.beginTransmission(RV8523_I2C_ADDR);
 #if ARDUINO >= 100
-  Wire.write((uint8_t)0x00); // reset register pointer
-  Wire.write((uint8_t)0x80); // Stop the clock. The seconds will be written last
+  Wire.write((uint8_t)RV8523_SEC); // reset register pointer
+  Wire.write(dec2bcd(tm.Second));
   Wire.write(dec2bcd(tm.Minute));
   Wire.write(dec2bcd(tm.Hour));      // sets 24 hour format
-  Wire.write(dec2bcd(tm.Wday));
   Wire.write(dec2bcd(tm.Day));
+  Wire.write(dec2bcd(tm.Wday));
   Wire.write(dec2bcd(tm.Month));
   Wire.write(dec2bcd(tmYearToY2k(tm.Year)));
 #else
-  Wire.send(0x00); // reset register pointer
-  Wire.send(0x80); // Stop the clock. The seconds will be written last
+  Wire.send(RV8523_SEC); // reset register pointer
+  Wire.send(dec2bcd(tm.Second));
   Wire.send(dec2bcd(tm.Minute));
   Wire.send(dec2bcd(tm.Hour));      // sets 24 hour format
-  Wire.send(dec2bcd(tm.Wday));
   Wire.send(dec2bcd(tm.Day));
+  Wire.send(dec2bcd(tm.Wday));
   Wire.send(dec2bcd(tm.Month));
   Wire.send(dec2bcd(tmYearToY2k(tm.Year)));
-#endif
-  if (Wire.endTransmission() != 0) {
-    exists = false;
-    return false;
-  }
-  exists = true;
-
-  // Now go back and set the seconds, starting the clock back up as a side effect
-  Wire.beginTransmission(DS1307_CTRL_ID);
-#if ARDUINO >= 100
-  Wire.write((uint8_t)0x00); // reset register pointer
-  Wire.write(dec2bcd(tm.Second)); // write the seconds, with the stop bit clear to restart
-#else
-  Wire.send(0x00); // reset register pointer
-  Wire.send(dec2bcd(tm.Second)); // write the seconds, with the stop bit clear to restart
 #endif
   if (Wire.endTransmission() != 0) {
     exists = false;
@@ -170,16 +195,16 @@ bool RV8523RTC::write(tmElements_t &tm)
 
 unsigned char RV8523RTC::isRunning()
 {
-  Wire.beginTransmission(DS1307_CTRL_ID);
+  Wire.beginTransmission(RV8523_I2C_ADDR);
 #if ARDUINO >= 100
-  Wire.write((uint8_t)0x00);
+  Wire.write((uint8_t)RV8523_SEC);
 #else
-  Wire.send(0x00);
+  Wire.send(RV8523_SEC);
 #endif
   Wire.endTransmission();
 
   // Just fetch the seconds register and check the top bit
-  Wire.requestFrom(DS1307_CTRL_ID, 1);
+  Wire.requestFrom(RV8523_I2C_ADDR, 1);
 #if ARDUINO >= 100
   return !(Wire.read() & 0x80);
 #else
@@ -191,12 +216,12 @@ void RV8523RTC::setCalibration(char calValue)
 {
   unsigned char calReg = abs(calValue) & 0x1f;
   if (calValue >= 0) calReg |= 0x20; // S bit is positive to speed up the clock
-  Wire.beginTransmission(DS1307_CTRL_ID);
+  Wire.beginTransmission(RV8523_I2C_ADDR);
 #if ARDUINO >= 100
-  Wire.write((uint8_t)0x07); // Point to calibration register
+  Wire.write((uint8_t)RV8523_OFFSET); // Point to calibration register
   Wire.write(calReg);
 #else
-  Wire.send(0x07); // Point to calibration register
+  Wire.send(RV8523_OFFSET); // Point to calibration register
   Wire.send(calReg);
 #endif
   Wire.endTransmission();
@@ -204,15 +229,15 @@ void RV8523RTC::setCalibration(char calValue)
 
 char RV8523RTC::getCalibration()
 {
-  Wire.beginTransmission(DS1307_CTRL_ID);
+  Wire.beginTransmission(RV8523_I2C_ADDR);
 #if ARDUINO >= 100
-  Wire.write((uint8_t)0x07);
+  Wire.write((uint8_t)RV8523_OFFSET);
 #else
-  Wire.send(0x07);
+  Wire.send(RV8523_OFFSET);
 #endif
   Wire.endTransmission();
 
-  Wire.requestFrom(DS1307_CTRL_ID, 1);
+  Wire.requestFrom(RV8523_I2C_ADDR, 1);
 #if ARDUINO >= 100
   unsigned char calReg = Wire.read();
 #else
